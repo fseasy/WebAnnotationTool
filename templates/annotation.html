@@ -2,12 +2,132 @@
 <html lang="zh-CN">
 <head>
     <title> Annotation </title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" type="text/css">
 </head>
 
 <body>
-    <div id="annotation_content">
-        {{  text }}
+    <div>
+        对话总轮数{{ cur_num }}/{{ fragments_num }}
     </div>
+    <div id="annotation_content">
+    </div>
+    <a href="#" class="float_btn green" id="add_word">添加</a>
+    <!-- scripts  -->
+    <script type=text/javascript src="{{ url_for('static', filename='jquery-3.2.0.min.js') }}"></script>
+    <script type=text/javascript src="{{ url_for('static', filename='highlight.js') }}"></script>
+    <script type=text/javascript>
+        // pre-set the root url, http://flask.pocoo.org/docs/0.12/patterns/jquery/
+        $SCRIPT_ROOT = {{ request.script_root|tojson|safe }};
+
+        // pre-set the fragment id
+        $CURRENT_FRAGMENT_ID = {{ cur_num }} - 1;
+        // global variable
+        cachedData = window._cachedData = {};
+
+    </script>
+
+    <script>
+        $(function(){
+            var contentObj = $("#annotation_content"),
+                addBtnObj = $("#add_word"),
+                selectedText = "";
+
+            var getFragmentFromServer = function(){
+                var targetUrl = $SCRIPT_ROOT + "/annotation/get_text"
+                return $.getJSON(targetUrl, {
+                    fragment_id: $CURRENT_FRAGMENT_ID   
+                }, function(fragment){
+                    // fragment: list of lines, [ "...", ]
+                    cachedData["fragment"] = fragment;
+                });
+            }
+
+            var getCurrentMatchFromServer = function(){
+                var targetUrl = $SCRIPT_ROOT + "/annotation/current_match";
+                return $.getJSON(targetUrl, {
+                    fragment_id: $CURRENT_FRAGMENT_ID
+                }, function(matchRangeResult){
+                    // match range result
+                    // { lineNum:  [ [startPos1, endPos1], ... ], ... }
+                    cachedData["currentMatchResult"] = matchRangeResult;
+                });
+            }
+
+            var initContent = function(fragment, lineNum2MatchResult){
+                var sentObjArray = [],
+                    sentLength = fragment.length;
+                for(var i = 0; i < sentLength; i++){
+                    var  p = document.createElement('P'),
+                         pText = fragment[i],
+                         pHtml = (i in lineNum2MatchResult) 
+                                 ? addHighlightTag(pText, lineNum2MatchResult[i])
+                                 : pText;
+                    $(p).html(pHtml).appendTo(contentObj);
+                }
+            }
+
+            getFragmentFromServer().then(function(){    
+                getCurrentMatchFromServer().then(function(){
+                    initContent(cachedData["fragment"], cachedData["currentMatchResult"]);
+
+                })
+            });
+            
+            var showBtn = function(btnEle, eX, eY){
+                var x = eX + 5,
+                    y = eY + 8;
+                $(btnEle).css({"display": "inline-block",
+                    "left": x + "px",
+                    "top": y + "px"
+                });
+            }
+
+            var hideBtn = function(btnEle){
+                btnEle.css({"display": "none"});
+            }
+
+            var saveSelectedText = function(text){
+                console.log(text);
+                selectedText = text;
+            }
+            var loadSelectedText = function(){
+                return selectedText;
+            }
+
+            contentObj.bind({
+                "mousedown": function(e){
+                    hideBtn(addBtnObj);
+                },
+                "mouseup": function(e){
+                    var x = e.pageX,
+                        y = e.pageY;
+                    var curSelectedText = getSelectionText();
+                    if(curSelectedText){
+                        saveSelectedText(curSelectedText);
+                        showBtn(addBtnObj, x, y);
+                    }
+                }
+            });
+
+            addBtnObj.bind({
+                "click": function(){
+                    var targetUrl = $SCRIPT_ROOT + "/annotation/add_word";
+                    var lastSelectedText = loadSelectedText();
+                    if(lastSelectedText){ 
+                        $.getJSON(targetUrl, {
+                            fragment_id: $CURRENT_FRAGMENT_ID,
+                            word: lastSelectedText
+                        }, function(newMatchedResult){
+                            console.log(newMatchedResult);   
+                        })
+                    }
+                    // hidden the btn
+                    hideBtn($(this));
+                }
+            })
+        });
+
+    </script>
 </body>
 
 </html>
