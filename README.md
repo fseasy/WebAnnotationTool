@@ -39,16 +39,24 @@
 
 ## 难度
 
-1. 获取选区
+1. [x] 获取选区
 
     http://stackoverflow.com/questions/5379120/get-the-highlighted-selected-text?rq=1
 
-2. 高亮文本
+2. [x] 高亮文本
 
-3. 在高亮区域检测点击鼠标
+3. [ ] 在高亮区域检测点击鼠标
 
-4. 出现图标
+4. [x] 出现图标
 
-5. 整体事务流
+5. [ ] 整体事务流
 
-6. 最大的难度——没时间啊！ 不是来做标注工具的，而是做任务啊！ 
+6. [x] 最大的难度——没时间啊！ 不是来做标注工具的，而是做任务啊！ 
+
+# 折衷
+
+1. 放弃使用数据库，而是直接将所有数据加载到内存中
+
+    学会了思想：[利用moudule来实现singleton](http://stackoverflow.com/questions/31875/is-there-a-simple-elegant-way-to-define-singletons)
+
+2. 加入新词后高亮更新采用整体更新，而非增量更新

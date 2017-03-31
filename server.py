@@ -20,8 +20,7 @@ def hello_world():
 
 @app.route("/annotation/<num>")
 def annotation(num=1):
-    num = int(num)
-    print(type(num))
+    num = int(num) # default type of num is unicode.
     fragments = db.get_fragments()
     length = len(fragments)
     idx = num - 1
@@ -29,7 +28,6 @@ def annotation(num=1):
         idx = 0
     elif idx >= length:
         idx = length - 1
-
     return render_template("annotation.html", 
             cur_num=idx+1, 
             fragments_num=length)
@@ -53,18 +51,17 @@ def get_current_match_range():
 @app.route("/annotation/add_word")
 def add_word_and_get_new_matched():
     fragment_id = request.args.get("fragment_id", 23, type=int)
-    word = request.args.get("word", "", type=str)
-    print(word) 
+    # default type is unicode
+    # shouln't given type=str, this may cause an failed convertion
+    # unicode -> str for UTF8 of Chinese!
+    word = request.args.get("word", u"", type=unicode) 
     fragment, _ = db.get_certain_fragment(fragment_id)
-    print("======================")
-    print("=======GUARD==========")
     if word == "":
         return jsonify({})
     # add to new word to new len2wordset
     db.add_new_word2len2wordset(word) 
     # construct an tmp len2wordset
     tmp_len2set = { len(word): set([word, ])}
-    
     # get the newly matched result
     match_result = db.match_multi_line(fragment, tmp_len2set)
     return jsonify(match_result)

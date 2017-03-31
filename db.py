@@ -1,11 +1,10 @@
 
 '''
-copy from http://flask.pocoo.org/docs/0.12/patterns/sqlite3/
+inspired from http://flask.pocoo.org/docs/0.12/patterns/sqlite3/
 '''
 
-import sqlite3
 import bisect
-from flask import g
+import sqlite3
 
 DATABASE = 'annotation.db'
 
@@ -13,15 +12,24 @@ RAW_DATA_PATH = "raw.txt"
 
 WORD_LIST_PATH = "business_words.txt"
 
+# see http://stackoverflow.com/questions/2827623/python-create-object-and-add-attributes-to-it
+# default object() has no `__dict__`, so can't set attr to it.
+# following codes solves it
+class ObjectWithDict(object):
+    pass
+
+_CachedData = ObjectWithDict()
+
+
 def get_db():
-    db = getattr(g, '_database', None)
+    db = getattr(_CachedData, '_database', None)
     if db is None:
-        db = g._database = sqlite3.connect(DATABASE)
+        db = _CachedData._database = sqlite3.connect(DATABASE)
     return db
 
 
 def close_connection(exception):
-    db = getattr(g, '_database', None)
+    db = getattr(_CachedData, '_database', None)
     if db is not None:
         db.close()
 
@@ -38,10 +46,10 @@ def _fragments_loader():
 
 
 def get_fragments():
-    fragments = getattr(g, '_fragments', None)
+    fragments = getattr(_CachedData, '_fragments', None)
     if fragments is None:
         print("LOAD!!-----")
-        fragments = g._fragments = _fragments_loader()
+        fragments = _CachedData._fragments = _fragments_loader()
     return fragments
 
 def get_fragments_num():
@@ -104,16 +112,16 @@ class Len2WordSet(object):
 
 
 def get_original_len2wordset():
-    len2wordset = getattr(g, "_origin_len2set", None)
+    len2wordset = getattr(_CachedData, "_origin_len2set", None)
     if len2wordset is None:
-        len2wordset = g._origin_len2set = Len2WordSet()
+        len2wordset = _CachedData._origin_len2set = Len2WordSet()
         len2wordset.parse(WORD_LIST_PATH)
     return len2wordset
 
 def get_new_len2wordset():
-    len2wordset = getattr(g, "_new_len2wordset", None)
+    len2wordset = getattr(_CachedData, "_new_len2wordset", None)
     if len2wordset is None:
-        len2wordset = g._new_len2wordset = Len2WordSet()
+        len2wordset = _CachedData._new_len2wordset = Len2WordSet()
     return len2wordset
 
 def  add_new_word2len2wordset(word):
