@@ -187,5 +187,5 @@ def match_multi_line_with_multi_len2set(line_list, len2set_list):
         for len2set in len2set_list:
             word_range_list.extend(get_match_word_range(line, len2set))
         if len(word_range_list) > 0:
-            match_result[line_num] = word_range_list
+            match_result[line_num] = sorted(word_range_list, key=lambda r: r[0])
     return match_result

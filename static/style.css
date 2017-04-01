@@ -1,6 +1,12 @@
 .ann_highlight {
- background: yellow;
+	background: yellow;
 }
+
+.ann_highlight:hover{
+	text-decoration: line-through;
+	cursor: pointer;
+}
+
 .float_btn {
     /*  from http://www.bestcssbuttongenerator.com/#/0  */
 
@@ -35,5 +41,19 @@
 
 .float_btn.green:hover {
 	background-color:#5cbf2a;
+    opacity:1;
+}
+
+.float_btn.red {
+	box-shadow: 0px 0px 0px 0px #EFB28C;
+	background-color:#E8837E;
+    border:1px solid #E8837E;
+    text-shadow:0px 0px 0px #E8837E;
+
+    display: none;
+}
+
+.float_btn.red:hover {
+	background-color:#E9837E;
     opacity:1;
 }
