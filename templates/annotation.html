@@ -34,7 +34,8 @@
                 removeBtnObj = $("#remove_word"),
                 selectedText = "",
                 toRemoveText = "",
-                toRemoveTextSource;
+                toRemoveTextSource,
+                removedLineNum2MatchResult;
             
             var saveSelectedText = function(text){
                 console.log(text);
@@ -59,6 +60,13 @@
                 return toRemoveTextSource;
             }
 
+            var saveRemovedLineNum2MatchResult = function(matchResult){
+                removedLineNum2MatchResult = matchResult;
+            }
+            var loadRemovedLineNum2MatchResult = function(){
+                return removedLineNum2MatchResult;
+            }
+
 
             var getFragmentFromServer = function(){
                 var targetUrl = $SCRIPT_ROOT + "/annotation/get_text"
@@ -81,38 +89,6 @@
                 });
             }
 
-            var addWordAndUpdateMatch = function(){
-                var targetUrl = $SCRIPT_ROOT + "/annotation/add_word";
-                var lastSelectedText = loadSelectedText();
-                if(lastSelectedText){ 
-                    return $.getJSON(targetUrl, {
-                        fragment_id: $CURRENT_FRAGMENT_ID,
-                        word: lastSelectedText
-                    }, function(newMatchedResult){
-                        console.log(newMatchedResult);  
-                        addMatchResult(cachedData["currentMatchResult"],
-                                        newMatchedResult);
-                        updateContent(cachedData["fragment"], 
-                                        cachedData["currentMatchResult"]);
-                    })
-             
-               }
-            }
-
-            var checkToRemoveWordSource = function(){
-                var targetUrl = $SCRIPT_ROOT + "annotation/check_word_source",
-                    word = loadToRemoveText();
-                if(word.length == 0){ return; }
-                return $.getJSON(targetUrl, {
-                    word: word
-                }, function(wordSource){
-                    cachedData   
-                    
-                })
-
-
-            }
-
             var initContent = function(fragment, lineNum2MatchResult){
                 var sentObjArray = [],
                     sentLength = fragment.length;
@@ -127,7 +103,19 @@
                     cachedData["contentDomArray"].push(p);
                 }
             }
-
+            
+            var checkToRemoveWordSource = function(){
+                var targetUrl = $SCRIPT_ROOT + "/annotation/check_word_source",
+                    word = loadToRemoveText();
+                if(word.length == 0){ return; }
+                return $.getJSON(targetUrl, {
+                    word: word
+                }, function(wordSource){
+                    saveToRemoveTextSource(wordSource); 
+                    console.log(wordSource);
+                });
+            }
+            
             var addMatchResult = function(oriLineNum2MatchResult, newLineNum2MatchResult){
                 for(var lineNum in newLineNum2MatchResult){
                     var newRangeList = newLineNum2MatchResult[lineNum],
@@ -141,7 +129,8 @@
                 }
             }
 
-            var removeMatchResult = function(oriLineNum2MatchResult, removedLineNum2MatchResult){
+            var removeMatchResult = function(oriLineNum2MatchResult,  
+                                             removedLineNum2MatchResult){
                 for(var lineNum in removedLineNum2MatchResult){
                     var removedRangeList = removedLineNum2MatchResult[lineNum],
                         oriRangeList = (lineNum in oriLineNum2MatchResult)
@@ -159,15 +148,72 @@
                 }
 
             }
-            var updateContent = function(fragment, lineNum2MatchResult){
-                for(var lineNum in lineNum2MatchResult){
-                    var pText = fragment[lineNum],
-                        rangeArray = lineNum2MatchResult[lineNum],
+
+            var generateLineNumArrFromMatchResult = function(matchResult){
+                var lineNumArr = [];
+                for(var lineNum in matchResult){
+                    lineNumArr.push(lineNum);
+                }
+                return lineNumArr;
+            }
+
+            var updateContent = function(fragment, changedLineNumArr,
+                                         lineNum2MatchResult){
+                for(var i = 0; i < changedLineNumArr.length; i++){
+                    var lineNum = changedLineNumArr[i],
+                        pText = fragment[lineNum],
+                        rangeArray = (lineNum in lineNum2MatchResult) 
+                                     ? lineNum2MatchResult[lineNum]
+                                     : [],
                         newHtml = addHighlightTag(pText, rangeArray),
                         pDom = cachedData["contentDomArray"][lineNum];
                     $(pDom).html(newHtml);
                 }
         
+            }
+
+            var addWordAndUpdateMatch = function(){
+                var targetUrl = $SCRIPT_ROOT + "/annotation/add_word";
+                var lastSelectedText = loadSelectedText();
+                if(lastSelectedText){ 
+                    return $.getJSON(targetUrl, {
+                        fragment_id: $CURRENT_FRAGMENT_ID,
+                        word: lastSelectedText
+                    }, function(newMatchedResult){
+                        console.log(newMatchedResult);  
+                        addMatchResult(cachedData["currentMatchResult"],
+                                        newMatchedResult);
+                        var changedLineNumArr = generateLineNumArrFromMatchResult(
+                            newMatchedResult
+                        );
+                        updateContent(cachedData["fragment"], 
+                                      changedLineNumArr,
+                                      cachedData["currentMatchResult"]);
+                    })
+             
+               }
+            }
+
+            var removeWordAndUpdateContent = function(){
+                var targetUrl = $SCRIPT_ROOT + "/annotation/remove_word",
+                    word = loadToRemoveText(),
+                    wordSource = loadToRemoveTextSource();
+                if(!word){ return; }
+                return $.getJSON(targetUrl, {
+                    word: word,
+                    word_source: wordSource,
+                    fragment_id: $CURRENT_FRAGMENT_ID
+                }, function(removedLineNum2MatchResult){
+                    removeMatchResult(cachedData["currentMatchResult"],
+                                      removedLineNum2MatchResult);
+                    var changedLineNumArr = generateLineNumArrFromMatchResult(
+                        removedLineNum2MatchResult
+                    );
+                    updateContent(cachedData["fragment"],
+                                  changedLineNumArr,
+                                  cachedData["currentMatchResult"]);
+                    
+                })
             }
 
             var showBtn = function(btnEle, eX, eY){
@@ -217,7 +263,30 @@
                 }
             })
 
-
+            removeBtnObj.bind({
+                "click": function(){
+                    var checkPromise = checkToRemoveWordSource();
+                    if(checkPromise){
+                        checkPromise.then(function(){
+                            var wordSource = loadToRemoveTextSource();
+                            if(wordSource == "ORIGIN"){
+                                var response = confirm("确定要删除来自底表的词？");
+                                if(response == false){
+                                    return false;
+                                }
+                            }
+                            else if(wordSource == "OTHERS"){
+                                console.log("unkown to-removed word source")
+                                return false;
+                            }
+                            // remove and update
+                            removeWordAndUpdateContent();
+                        });
+                    }
+                    hideBtn($(this));
+                    return false;
+                }
+            })
 
             getFragmentFromServer().then(function(){    
                 getCurrentMatchFromServer().then(function(){

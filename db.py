@@ -3,14 +3,25 @@
 inspired from http://flask.pocoo.org/docs/0.12/patterns/sqlite3/
 '''
 
+from __future__ import print_function
+
 import bisect
 import sqlite3
+import os
+import logging
 
 DATABASE = 'annotation.db'
 
-RAW_DATA_PATH = "raw.txt"
+DATA_DIR_PATH = "data"
 
-WORD_LIST_PATH = "business_words.txt"
+RAW_DATA_NAME = "raw.txt"
+RAW_DATA_PATH = os.path.join(DATA_DIR_PATH, RAW_DATA_NAME)
+
+WORD_LIST_NAME = "business_words.txt"
+WORD_LIST_PATH = os.path.join(DATA_DIR_PATH, WORD_LIST_NAME)
+
+ACTION_RECORD_NAME = "action.txt"
+ACTION_RECORD_PATH = os.path.join(DATA_DIR_PATH, ACTION_RECORD_NAME)
 
 # see http://stackoverflow.com/questions/2827623/python-create-object-and-add-attributes-to-it
 # default object() has no `__dict__`, so can't set attr to it.
@@ -18,18 +29,18 @@ WORD_LIST_PATH = "business_words.txt"
 class ObjectWithDict(object):
     pass
 
-_CachedData = ObjectWithDict()
+_global_cached_data = ObjectWithDict()
 
 
 def get_db():
-    db = getattr(_CachedData, '_database', None)
+    db = getattr(_global_cached_data, '_database', None)
     if db is None:
-        db = _CachedData._database = sqlite3.connect(DATABASE)
+        db = _global_cached_data._database = sqlite3.connect(DATABASE)
     return db
 
 
 def close_connection(exception):
-    db = getattr(_CachedData, '_database', None)
+    db = getattr(_global_cached_data, '_database', None)
     if db is not None:
         db.close()
 
@@ -46,10 +57,10 @@ def _fragments_loader():
 
 
 def get_fragments():
-    fragments = getattr(_CachedData, '_fragments', None)
+    fragments = getattr(_global_cached_data, '_fragments', None)
     if fragments is None:
         print("LOAD!!-----")
-        fragments = _CachedData._fragments = _fragments_loader()
+        fragments = _global_cached_data._fragments = _fragments_loader()
     return fragments
 
 def get_fragments_num():
@@ -78,17 +89,43 @@ class Len2WordSet(object):
         word_set.add(word)
         return True
 
-    def parse(self, word_file_path):
+    def remove_word(self, word):
+        word_len = len(word)
+        if word_len == 0 or word_len not in self._len2set:
+            return False
+        word_set = self._len2set[word_len]
+        #word_set.discard(word) # discard- no raise, remove raise error if no key
+        if word in word_set:
+            word_set.remove(word)
+            return True
+        else:
+            return False
+
+    def parse_from_file(self, word_file_path):
+        '''
+        parse from file
+        '''
         with open(word_file_path) as input_f:
             for line in input_f:
                 word = line.decode("utf-8").strip()
                 self.add_word(word)
+
+    def parse_from_word_list(self, word_list):
+        '''
+        parse form word list
+        '''
+        for word in word_list:
+            self.add_word(word)
+
     def debug_output(self):
+        '''
+        debug output.
+        '''
         for word_len in self._len2set:
             word_set = self._len2set[word_len]
-            for w in word_set:
-                print("{}, {}".format(w.encode("utf-8"), word_len))
-    
+            for word in word_set:
+                print("{}, {}".format(word.encode("utf-8"), word_len))
+   
     def __iter__(self):
         return self._len2set.__iter__()
     
@@ -100,6 +137,8 @@ class Len2WordSet(object):
     
     def __getitem__(self, idx):
         return self._len2set.__getitem__(idx)
+    def __contains__(self, k):
+        return self._len2set.__contains__(k)
     
     def setdefault(self, key, default):
         return self._len2set.setdefault(key, default)
@@ -110,21 +149,130 @@ class Len2WordSet(object):
     def items(self):
         return self._len2set.items()
 
+class AnnotationActionRecorder(object):
+    ADD_ACTION = u"+"
+    REMOVE_ACTION = u"-"
+    def  __init__(self, action_fpath=ACTION_RECORD_PATH):
+        self._init_file(action_fpath)
+        self._action_fpath = action_fpath
+        self._working_action_file = open(action_fpath, "at")
+        self._action_cnt = 0
+
+    def _init_file(self, action_fpath):
+        ''''
+        '''
+    
+    def _append_action2file(self, word, action):
+        if len(word) == 0:
+            return False
+        if isinstance(word, unicode):
+            word = word.encode("utf-8")
+        action = action.encode("utf-8")
+        self._working_action_file.write("{}\t{}\t{}\n".format(
+            self._action_cnt, word, action))
+        self._action_cnt += 1
+
+    def add_word(self, word):
+        '''
+        append word to file
+        '''
+        return self._append_action2file(word, self.ADD_ACTION)
+
+    def remove_word(self, word):
+        '''
+        append the removed file to removed file.
+        '''
+        return self._append_action2file(word, self.REMOVE_ACTION)
+
+    def parse_action(self, init_word_fpath=""):
+        '''
+        parse action to get the result word list.
+        `init_word_fpath` is needed if some extra words exists(not
+        added by this action, but may be removed and recorded!)
+        
+        @init_word_fpath string, file path for initialization word list.
+            every line contains one word.
+        '''
+        word_set = set()
+        # 1. flush current working file
+        self._working_action_file.flush()
+        # 2. get from the init_word_fpath
+        if init_word_fpath != "":
+            with open(init_word_fpath) as init_f:
+                for line in init_f:
+                    word = line.decode("utf-8").strip()
+                    word_set.add(word)
+        # 3. parse action
+        with open(self._action_fpath) as af:
+            for line in af:
+                line_u = line.decode("utf-8").strip()
+                if line_u == "":
+                    continue
+                cols = line_u.split(u"\t")
+                print(len(cols))
+                word = cols[1]
+                action = cols[2]
+                if action == self.ADD_ACTION:
+                    word_set.add(word)
+                elif action == self.REMOVE_ACTION:
+                    if word not in word_set:
+                        logging.getLogger(__name__).error(("{} to be removed but "
+                            "not in word set!").format(word.encode("utf-8")))
+                    else:
+                        word_set.remove(word)
+                else:
+                    logging.getLogger(__name__).error(("unknow action: "
+                        "{}").format(action))
+        return list(word_set)
+
+    def close(self):
+        '''
+        close handling.`
+        '''
+        print("CLOSE!!!")
+        self._working_action_file.close()
+
+    def __del__(self):
+        self.close()
+
+def get_action_recorder():
+    '''
+    get action recoder
+    '''
+    action_recorder = getattr(_global_cached_data, "_action_recorder", None)
+    if action_recorder is None:
+        action_recorder = AnnotationActionRecorder()
+        setattr(_global_cached_data, "_action_recorder", action_recorder)
+    return action_recorder
+
+def close_action_recorder():
+    '''
+    close action recorder
+    '''
+    action_recorder = getattr(_global_cached_data, "_action_recorder", None)
+    if action_recorder:
+        action_recorder.close()
+
+ORIGIN_LEN2WORD_SET_NAME = "ORIGIN"
 
 def get_original_len2wordset():
-    len2wordset = getattr(_CachedData, "_origin_len2set", None)
+    len2wordset = getattr(_global_cached_data, "_origin_len2set", None)
     if len2wordset is None:
-        len2wordset = _CachedData._origin_len2set = Len2WordSet()
-        len2wordset.parse(WORD_LIST_PATH)
+        len2wordset = _global_cached_data._origin_len2set = Len2WordSet()
+        recorder = get_action_recorder()
+        word_list = recorder.parse_action(WORD_LIST_PATH)
+        len2wordset.parse_from_word_list(word_list)
     return len2wordset
+
+NEW_LEN2WORD_SET_NAME = "NEW"
 
 def get_new_len2wordset():
-    len2wordset = getattr(_CachedData, "_new_len2wordset", None)
+    len2wordset = getattr(_global_cached_data, "_new_len2wordset", None)
     if len2wordset is None:
-        len2wordset = _CachedData._new_len2wordset = Len2WordSet()
+        len2wordset = _global_cached_data._new_len2wordset = Len2WordSet()
     return len2wordset
 
-def  add_new_word2len2wordset(word):
+def add_new_word2len2wordset(word):
     new_len2wordset = get_new_len2wordset()
     word_len = len(word)
     new_len2wordset.setdefault(word_len, set()).add(word)
@@ -187,5 +335,6 @@ def match_multi_line_with_multi_len2set(line_list, len2set_list):
         for len2set in len2set_list:
             word_range_list.extend(get_match_word_range(line, len2set))
         if len(word_range_list) > 0:
+            # sort is needed!!
             match_result[line_num] = sorted(word_range_list, key=lambda r: r[0])
     return match_result
