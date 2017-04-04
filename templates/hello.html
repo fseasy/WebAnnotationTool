@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+<head>
+    <!-- http://v3.bootcss.com/examples/jumbotron/# -->
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>标注起始页</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}" type="text/css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" type="text/css" />
+</head>
+
+<body>
+    <div class="jumbotron">
+        <div class="container">
+            <h1 class="text-center">业务词标注任务</h1>
+            
+            <div class="panel panel-default" style="margin-top: 60px;">
+                <div class="panel-heading">使用方法</div>
+                <div class="panel-body">
+                <ol>
+                    <li> 通过鼠标选中来添加业务词，添加后业务词高亮显示。</li>
+                    <li> 添加一个业务词后，所有文本中的该业务词均将全部高亮，无需重复标注。</li>
+                    <li> 如果标注出错，在高亮词上点击，可删除该业务词。</li>
+                </ol>
+                </div>
+            </div>
+            <div class="text-center">
+                <a href="/annotation/1" class="btn btn-info">开始标注</a>
+            </div>
+            </div>
+</body>
+</html>

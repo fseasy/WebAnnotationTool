@@ -1,3 +1,7 @@
+body {
+	color: #000;
+	font-family: "Microsoft YaHei", "Consolas";
+}
 .ann_highlight {
 	background: yellow;
 }
@@ -26,7 +30,6 @@
     opacity:0.5;
     
 }
-
 
 .float_btn.green {
     -moz-box-shadow: 0px 0px 0px 0px #3dc21b;

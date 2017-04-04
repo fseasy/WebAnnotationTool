@@ -13,7 +13,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def hello_world():
-    return 'hello world!'
+    return render_template("hello.html")
 
 @app.route("/annotation/<num>")
 def annotation(num=1):
@@ -100,6 +100,9 @@ def remove_word_and_get_removed_match():
     match_result = db.match_multi_line(fragment, tmp_len2set)
     return jsonify(match_result)
 
+@app.route("/finish")
+def finish():
+    return render_template("finish.html")
 
 @app.teardown_appcontext
 def close_connection(exception):

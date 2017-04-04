@@ -44,11 +44,27 @@ def close_connection(exception):
     if db is not None:
         db.close()
 
+def _escape_html(s, quote=False):
+    '''
+    copy from
+    http://stackoverflow.com/questions/1061697/whats-the-easiest-way-to-escape-html-in-python
+    Replace special characters "&", "<" and ">" to HTML-safe sequences.
+    If the optional flag quote is true, the quotation mark character (")
+    is also translated.
+    '''
+    s = s.replace(u"&", u"&amp;") # Must be done first!
+    s = s.replace(u"<", u"&lt;")
+    s = s.replace(u">", u"&gt;")
+    if quote:
+        s = s.replace(u'"', u"&quot;")
+    return s
+
 def _fragments_loader():
     fragment_list = []
     with open(RAW_DATA_PATH) as input_f:
         all_content = input_f.read()
         all_content = all_content.decode("utf-8").strip()
+        all_content = _escape_html(all_content)
         parts = all_content.split(u"\n\n")
         for part in parts:
             fragment = part.split(u"\n")
@@ -170,6 +186,7 @@ class AnnotationActionRecorder(object):
         action = action.encode("utf-8")
         self._working_action_file.write("{}\t{}\t{}\n".format(
             self._action_cnt, word, action))
+        self._working_action_file.flush()
         self._action_cnt += 1
 
     def add_word(self, word):

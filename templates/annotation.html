@@ -1,15 +1,51 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+    <!-- http://v3.bootcss.com/examples/jumbotron/# -->
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title> Annotation </title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}" type="text/css" />
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" type="text/css">
 </head>
 
 <body>
-    <div>
-        对话总轮数{{ cur_num }}/{{ fragments_num }}
-    </div>
-    <div id="annotation_content">
+    <div class="container">
+        <div class="progress">
+            {% set progress = cur_num|int / fragments_num|int * 100 %}
+            <div class="progress-bar" role="progressbar" aria-valuenow="60" aria-valuemin="0" aria-valuemax="100" style="width: {{  progress }}%; min-width: 10em;">
+            当前进度: {{ cur_num }}/{{ fragments_num }}
+        </div>
+        </div>
+        <div id="annotation_content">
+        </div>
+        <div>
+
+
+
+        </div>
+        <nav aria-label="...">
+            <ul class="pager">
+            <li class="previous">
+                {%  set pre_page = cur_num|int - 1 %}
+                {%  if pre_page <= 0 %}
+                <a href="/"><span aria-hidden="true">&larr;</span> 开始页</a>
+                {% else %}
+                <a href="/annotation/{{ pre_page }}"><span aria-hidden="true">&larr;</span>上一条(第{{ pre_page }}条)</a>
+                {% endif %}
+            </li>
+
+            <li class="next">
+                {% set next_page = cur_num|int + 1%}
+                {% if next_page > fragments_num|int %}
+                <a href="/finish">完成<span aria-hidden="true">&rarr;</span></a>
+                {% else %}
+                <a href="/annotation/{{ next_page }}">下一条(第{{ next_page }}条)<span aria-hidden="true">&rarr;</span></a>
+                {% endif %}  
+            </li>
+            </ul>
+        </nav>
     </div>
     <a href="#" class="float_btn green" id="add_word">添加</a>
     <a href="#" class="float_btn red" id="remove_word">删除</a>
