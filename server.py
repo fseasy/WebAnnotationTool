@@ -27,7 +27,9 @@ def annotation(num=1):
         idx = length - 1
     return render_template("annotation.html", 
             cur_num=idx+1, 
-            fragments_num=length)
+            fragments_num=length,
+            source_origin=db.WordSource.ORIGIN,
+            source_unknown=db.WordSource.UNKNOWN)
 
 @app.route("/annotation/get_text")
 def get_text():
@@ -37,16 +39,27 @@ def get_text():
 
 @app.route("/annotation/current_match")
 def get_current_match_range():
+    '''
+    return current match range
+    @fragment_id current fragment id
+    @return current fragment match result.
+    '''
     fragment_id = request.args.get("fragment_id", 23, type=int)
     fragment, _ = db.get_certain_fragment(fragment_id)
-    original_len2set = db.get_original_len2wordset()
-    new_len2set = db.get_new_len2wordset()
-    original_match_result = db.match_multi_line_with_multi_len2set(fragment, 
-                                            [original_len2set, new_len2set])
-    return jsonify(original_match_result)
+    len2word_set = db.get_len2word_set()
+    match_result, word2line_list = db.match_all_line_and_get_word2line_list(
+        fragment, len2word_set)
+    # for lazy update.
+    db.set_current_word2line_list(word2line_list)
+    return jsonify(match_result)
 
 @app.route("/annotation/add_word")
 def add_word_and_get_new_matched():
+    '''
+    @fragment_id current fragment id
+    @word new word
+    @return new word's new match result(only the new word!)
+    '''
     fragment_id = request.args.get("fragment_id", 23, type=int)
     # default type is unicode
     # shouln't given type=str, this may cause an failed convertion
@@ -56,50 +69,49 @@ def add_word_and_get_new_matched():
     if word == "":
         return jsonify({})
     # add to new word to new len2wordset
-    db.add_new_word2len2wordset(word)
-    db.get_action_recorder().add_word(word)
+    db.add_new_word_and_set_source_and_record(word)
     # construct an tmp len2wordset
     tmp_len2set = {len(word): set([word, ])}
     # get the newly matched result
-    match_result = db.match_multi_line(fragment, tmp_len2set)
+    match_result, new_word2line_list = db.match_all_line_and_get_word2line_list(
+        fragment, tmp_len2set)
+    db.add_word2line_list(new_word2line_list)
     return jsonify(match_result)
 
 @app.route("/annotation/check_word_source")
 def check_word_source():
+    '''
+    @word to be removed word
+    @return word source
+    '''
     word = request.args.get("word", u"", type=unicode)
-    word_len = len(word)
-    # first check the newly len2wordset
-    # then original len2wordset
-    new_len2set = db.get_new_len2wordset()
-    original_len2set = db.get_original_len2wordset()
-    if (word_len in new_len2set
-         and word in new_len2set[word_len]):
-        return jsonify(db.NEW_LEN2WORD_SET_NAME)
-    elif (word_len in original_len2set
-           and word in original_len2set[word_len] ):
-        return jsonify(db.ORIGIN_LEN2WORD_SET_NAME)
-    else:
-        return jsonify("OTHERS")
+    word = word.strip()
+    return jsonify(db.get_word_source(word))
 
 @app.route("/annotation/remove_word")
-def remove_word_and_get_removed_match():
+def remove_word_and_get_updated_match():
+    '''
+    remove word and get updated match result
+    @fragment_id 
+    @word
+    '''
     fragment_id = request.args.get("fragment_id", 23, type=int)
     word = request.args.get("word", u"", type=unicode)
-    word_source = request.args.get("word_source", type=unicode)
     word = word.strip()
-    word_source = word_source.encode("utf-8")
-    if word_source == db.NEW_LEN2WORD_SET_NAME:
-        new_len2set = db.get_new_len2wordset()
-        new_len2set.remove_word(word)
-    elif word_source == db.ORIGIN_LEN2WORD_SET_NAME:
-        original_len2set = db.get_original_len2wordset()
-        original_len2set.remove_word(word)
-    db.get_action_recorder().remove_word(word)
+    db.remove_word_and_source_and_record(word)
     tmp_len2set = {len(word): set([word, ])}
     fragment, _ = db.get_certain_fragment(fragment_id)
-    match_result = db.match_multi_line(fragment, tmp_len2set)
-    return jsonify(match_result)
+    # get removed word affected line
+    line_list = db.get_word2line_list(word)
+    len2set = db.get_len2word_set()
+    # may get new word matched! so must update the word2line_list
+    updated_match_result, new_word2line_list = db.match_some_line(fragment, line_list, len2set)
+    db.add_word2line_list(new_word2line_list)
+    return jsonify(updated_match_result)
 
 @app.route("/finish")
 def finish():
+    '''
+    render finish page.
+    '''
     return render_template("finish.html")

@@ -11,7 +11,7 @@ import os
 import copy
 import logging
 
-logging.basicConfig(filename="error.log", level=logging.DEBUG)
+#logging.basicConfig(filename="error.log", level=logging.DEBUG)
 
 DATABASE = 'annotation.db'
 
@@ -224,6 +224,11 @@ class AnnotationActionRecorder(object):
                     continue
                 cols = line_u.split(u"\t")
                 #print(len(cols))
+                if len(cols) != 3:
+                    logging.getLogger(__name__).error(
+                        "unknow format: {}".format(line)
+                    )
+                    continue
                 word = cols[1]
                 action = cols[2]
                 if action == self.ADD_ACTION:
@@ -379,30 +384,35 @@ def get_word_source(word):
     return _get_current_word_source_obj().get_word_source(word)
 
 
-def add_new_word_and_set_source(word):
+def add_new_word_and_set_source_and_record(word):
     '''
     add new word to len2word_set and set it's source
     '''
     len2set = get_len2word_set()
     len2set.add_word(word)
     _get_current_word_source_obj().add_word_and_source(word, WordSource.NEW)
+    get_action_recorder().add_word(word)
 
-def remove_word_and_source(word):
+def remove_word_and_source_and_record(word):
     '''
     remove word from len2word and word's source from wordsource
     '''
     get_len2word_set().remove_word(word)
     _get_current_word_source_obj().remove_word(word)
+    get_action_recorder().remove_word(word)
 
-def get_match_word_range(text, len2set):
+
+def forward_maximum_match(text, len2set):
     '''
     max-forward match, return match range, format is : [ (start_pos, end_pos), ... ]
     may be it could be improved!
+    @return (word_range_list, matched_word_list)
     '''
     ascending_len_list = sorted(len2set.keys())
     pos = 0
     text_len = len(text)
     word_range_list = []
+    matched_word_list = []
     while pos < text_len:
         left_len = text_len - pos
         # bisect.bisect(list, value)
@@ -419,38 +429,115 @@ def get_match_word_range(text, len2set):
             if token in wordset:
                 # found.
                 word_range_list.append((pos, pos + word_len))
+                matched_word_list.append(token)
                 pos = pos + word_len
                 break
             search_len_index -= 1
         else:
             # not found at this pos
             pos += 1
-    return word_range_list
+    return (word_range_list, matched_word_list)
 
 
-def match_multi_line(line_list, len2set):
+def match_all_line_and_get_word2line_list(line_list, len2set):
     '''
-    match multi-line, return dict {line_number: match_range}, 
+    match multi-line, return dict {line_number: match_range},
     if not match for centain line, it will not occur in this dict.
+    @return (match_result, word2line_list)
     '''
     multi_line_match_result = dict()
+    word2line_list = dict()
     for line_num, line in enumerate(line_list):
-        word_range_list = get_match_word_range(line, len2set)
-        if len(word_range_list) > 0:
-            multi_line_match_result[line_num] = word_range_list
-    return multi_line_match_result
+        word_range_list, word_list = forward_maximum_match(line, len2set)
+        multi_line_match_result[line_num] = word_range_list
+        for word in word_list:
+            line_list = word2line_list.setdefault(word, [])
+            line_list.append(line_num)
+    return (multi_line_match_result, word2line_list)
 
-def match_multi_line_with_multi_len2set(line_list, len2set_list):
+def match_some_line(all_line_list, to_match_line_num_list, len2set):
     '''
-    using multi-len2set to match multi-line
-    return dict: {line_numberm: match_range}, not line number if corresponding line not match
+    only match some line.
+    @return (match_result, word2line_list)
     '''
     match_result = dict()
-    for line_num, line in enumerate(line_list):
-        word_range_list = []
-        for len2set in len2set_list:
-            word_range_list.extend(get_match_word_range(line, len2set))
-        if len(word_range_list) > 0:
-            # sort is needed!!
-            match_result[line_num] = sorted(word_range_list, key=lambda r: r[0])
-    return match_result
+    word2line_list = dict()
+    for line_num in to_match_line_num_list:
+        line = all_line_list[line_num]
+        word_range_list, word_list = forward_maximum_match(line, len2set)
+        # if word_range_list = []
+        # it also should be assign!!
+        match_result[line_num] = word_range_list
+        for word in word_list:
+            line_list = word2line_list.setdefault(word, [])
+            line_list.append(line_num)
+    return (match_result, word2line_list)
+
+# def match_multi_line_with_multi_len2set(line_list, len2set_list):
+#     '''
+#     using multi-len2set to match multi-line
+#     return dict: {line_numberm: match_range}, not line number if corresponding line not match
+#     '''
+#     match_result = dict()
+#     for line_num, line in enumerate(line_list):
+#         word_range_list = []
+#         for len2set in len2set_list:
+#             word_range_list.extend(forward_maximum_match(line, len2set))
+#         if len(word_range_list) > 0:
+#             # sort is needed!!
+#             match_result[line_num] = sorted(word_range_list, key=lambda r: r[0])
+#     return match_result
+
+
+def _get_word2line_list():
+    return getattr(_global_cached_data, "_current_word2line_list", None)
+
+def set_current_word2line_list(word2line_list):
+    '''
+    set current word to line list.
+    '''
+    setattr(_global_cached_data, "_current_word2line_list", word2line_list)
+
+def add_word2line_list(new_word2line_list):
+    '''
+    add new word to line list.
+    '''
+    word2line_list = _get_word2line_list()
+    if word2line_list is None:
+        logging.getLogger(__name__).error(
+            "add_word2line_list error: None"
+        )
+        return 
+    for word, line_list in new_word2line_list.items():
+        if word not in word2line_list:
+            word2line_list[word] = line_list
+        else:
+            word2line_list[word] = list(set(word2line_list[word] + line_list))
+
+
+
+def remove_word2line_list(word):
+    '''
+    remove word
+    '''
+    word2line_list = _get_word2line_list()
+    if word2line_list is None or word not in word2line_list:
+        logging.getLogger(__name__).error(
+            ("remove_word2line_list error: None or no word:"
+            " {}").format(word.encoding("utf-8"))
+        )
+        return
+    del word2line_list[word]
+
+def get_word2line_list(word):
+    '''
+    get word to line list
+    '''
+    word2line_list = _get_word2line_list()
+    if word2line_list is None or word not in word2line_list:
+        logging.getLogger(__name__).error(
+            ("get_word2line_list: None or no word: "
+            "{}").format(word.encode("utf-8"))
+        )
+        return []
+    return word2line_list[word]

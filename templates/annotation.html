@@ -47,8 +47,12 @@
             </ul>
         </nav>
     </div>
-    <a href="#" class="float_btn green" id="add_word">添加</a>
-    <a href="#" class="float_btn red" id="remove_word">删除</a>
+    <a href="#" class="inplace-btn btn btn-success" id="add_word">添加
+        <label class="hand small" id="add_word_text">(哈哈)</label>
+    </a>
+    <a href="#" class="inplace-btn btn btn-danger" id="remove_word">删除
+        <label class="hand small" id="remove_word_text">(嘿嘿)</label>
+    </a>
     <!-- scripts  -->
     <script type=text/javascript src="{{ url_for('static', filename='jquery-3.2.0.min.js') }}"></script>
     <script type=text/javascript src="{{ url_for('static', filename='highlight.js') }}"></script>
@@ -60,6 +64,9 @@
         $CURRENT_FRAGMENT_ID = {{ cur_num }} - 1;
         // global variable
         cachedData = window._cachedData = {};
+        // to check whethere the source of the word to be deleted is from ORIGIN
+        $SOURCE_ORIGIN = {{ source_origin }};
+        $SOURCE_UNKNOWN = {{  source_unknown }};
 
     </script>
 
@@ -67,14 +74,16 @@
         $(function(){
             var contentObj = $("#annotation_content"),
                 addBtnObj = $("#add_word"),
+                addBtnWordTextObj = $("#add_word_text"),
                 removeBtnObj = $("#remove_word"),
+                removeBtnWordTextObj = $("#remove_word_text"),
                 selectedText = "",
                 toRemoveText = "",
                 toRemoveTextSource,
                 removedLineNum2MatchResult;
             
             var saveSelectedText = function(text){
-                console.log(text);
+                //console.log(text);
                 selectedText = text;
             }
             var loadSelectedText = function(){
@@ -82,7 +91,7 @@
             }
 
             var saveToRemoveText = function(text){
-                console.log(text);
+                //console.log(text);
                 toRemoveText = text;
             }
             var loadToRemoveText = function(){
@@ -148,7 +157,7 @@
                     word: word
                 }, function(wordSource){
                     saveToRemoveTextSource(wordSource); 
-                    console.log(wordSource);
+                    //console.log(wordSource);
                 });
             }
             
@@ -180,9 +189,14 @@
                     }else {
                         oriLineNum2MatchResult[lineNum] = oriRangeList;
                     }
-
                 }
+            }
 
+            var updateMatchResult = function(oriLineNum2MatchResult, 
+                                             newLineNum2MatchResult){
+                for(var lineNum in newLineNum2MatchResult){
+                    oriLineNum2MatchResult[lineNum] = newLineNum2MatchResult[lineNum];
+                }
             }
 
             var generateLineNumArrFromMatchResult = function(matchResult){
@@ -216,7 +230,7 @@
                         fragment_id: $CURRENT_FRAGMENT_ID,
                         word: lastSelectedText
                     }, function(newMatchedResult){
-                        console.log(newMatchedResult);  
+                        //console.log(newMatchedResult);  
                         addMatchResult(cachedData["currentMatchResult"],
                                         newMatchedResult);
                         var changedLineNumArr = generateLineNumArrFromMatchResult(
@@ -237,17 +251,16 @@
                 if(!word){ return; }
                 return $.getJSON(targetUrl, {
                     word: word,
-                    word_source: wordSource,
                     fragment_id: $CURRENT_FRAGMENT_ID
-                }, function(removedLineNum2MatchResult){
-                    removeMatchResult(cachedData["currentMatchResult"],
-                                      removedLineNum2MatchResult);
+                }, function(updatedLineNum2MatchResult){
+                    updateMatchResult(cachedData["currentMatchResult"],
+                                      updatedLineNum2MatchResult);
                     var changedLineNumArr = generateLineNumArrFromMatchResult(
-                        removedLineNum2MatchResult
+                        updatedLineNum2MatchResult
                     );
                     updateContent(cachedData["fragment"],
                                   changedLineNumArr,
-                                  cachedData["currentMatchResult"]);
+                                  cachedData["currentMatchResult"]); // or updatedLineNum2MatchResult
                     
                 })
             }
@@ -277,6 +290,7 @@
                     var curSelectedText = getSelectionText();
                     if(curSelectedText){
                         saveSelectedText(curSelectedText);
+                        addBtnWordTextObj.text(["(",curSelectedText,")"].join(" "));
                         showBtn(addBtnObj, x, y);
                     }
                 },
@@ -285,6 +299,7 @@
                     if(obj.nodeName == "SPAN" && obj.getAttribute("class") == HIGHLIGHT_CLS_NAME){
                         var text = $(obj).text();
                         saveToRemoveText(text);
+                        removeBtnWordTextObj.text(["(", text, ")"].join(" "));
                         showBtn(removeBtnObj, e.pageX, e.pageY);
                     }
                 }
@@ -293,6 +308,7 @@
             addBtnObj.bind({
                 "click": function(){
                     addWordAndUpdateMatch();
+
                     // hidden the btn
                     hideBtn($(this));
                     return false;
@@ -305,14 +321,17 @@
                     if(checkPromise){
                         checkPromise.then(function(){
                             var wordSource = loadToRemoveTextSource();
-                            if(wordSource == "ORIGIN"){
-                                var response = confirm("确定要删除来自底表的词？");
+                            if(wordSource == $SOURCE_ORIGIN){
+                                var response = confirm("确定要删除来自底表的词("+  
+                                        loadToRemoveText()
+                                        +")？");
                                 if(response == false){
                                     return false;
                                 }
                             }
-                            else if(wordSource == "OTHERS"){
-                                console.log("unkown to-removed word source")
+                            else if(wordSource == $SOURCE_UNKNOWN){
+                                //console.log("unkown to-removed word source: ", wordSource)
+                                //console.log($SOURCE_ORIGIN)
                                 return false;
                             }
                             // remove and update
