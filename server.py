@@ -103,9 +103,3 @@ def remove_word_and_get_removed_match():
 @app.route("/finish")
 def finish():
     return render_template("finish.html")
-
-@app.teardown_appcontext
-def close_connection(exception):
-    print("CLOSE CONTEXT")
-    #db.close_connection(exception)
-    #db.close_action_recorder()

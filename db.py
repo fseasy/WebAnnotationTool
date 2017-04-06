@@ -8,7 +8,10 @@ from __future__ import print_function
 import bisect
 import sqlite3
 import os
+import copy
 import logging
+
+logging.basicConfig(filename="error.log", level=logging.DEBUG)
 
 DATABASE = 'annotation.db'
 
@@ -165,18 +168,23 @@ class Len2WordSet(object):
     def items(self):
         return self._len2set.items()
 
+def parse_base_word_set(base_word_set_path=WORD_LIST_PATH):
+    base_word_set = set()
+    with open(base_word_set_path) as bf:
+        for line in bf:
+            word = line.decode("utf-8").strip()
+            if word == u"":
+                continue
+            base_word_set.add(word)
+    return base_word_set
+
 class AnnotationActionRecorder(object):
     ADD_ACTION = u"+"
     REMOVE_ACTION = u"-"
     def  __init__(self, action_fpath=ACTION_RECORD_PATH):
-        self._init_file(action_fpath)
         self._action_fpath = action_fpath
         self._working_action_file = open(action_fpath, "at")
         self._action_cnt = 0
-
-    def _init_file(self, action_fpath):
-        ''''
-        '''
     
     def _append_action2file(self, word, action):
         if len(word) == 0:
@@ -201,32 +209,21 @@ class AnnotationActionRecorder(object):
         '''
         return self._append_action2file(word, self.REMOVE_ACTION)
 
-    def parse_action(self, init_word_fpath=""):
+    def parse_action(self, base_word_set=None):
         '''
         parse action to get the result word list.
-        `init_word_fpath` is needed if some extra words exists(not
-        added by this action, but may be removed and recorded!)
-        
-        @init_word_fpath string, file path for initialization word list.
-            every line contains one word.
         '''
-        word_set = set()
+        word_set = copy.copy(base_word_set) if base_word_set else set()
         # 1. flush current working file
         self._working_action_file.flush()
-        # 2. get from the init_word_fpath
-        if init_word_fpath != "":
-            with open(init_word_fpath) as init_f:
-                for line in init_f:
-                    word = line.decode("utf-8").strip()
-                    word_set.add(word)
-        # 3. parse action
+        # 2. parse action
         with open(self._action_fpath) as af:
             for line in af:
                 line_u = line.decode("utf-8").strip()
                 if line_u == "":
                     continue
                 cols = line_u.split(u"\t")
-                print(len(cols))
+                #print(len(cols))
                 word = cols[1]
                 action = cols[2]
                 if action == self.ADD_ACTION:
@@ -239,22 +236,99 @@ class AnnotationActionRecorder(object):
                         word_set.remove(word)
                 else:
                     logging.getLogger(__name__).error(("unknow action: "
-                        "{}").format(action))
+                        "{}").format(action.encode("utf-8")))
         return list(word_set)
 
     def close(self):
         '''
         close handling.`
         '''
-        print("CLOSE!!!")
+        logging.info("CLOSE action file!!!")
         self._working_action_file.close()
 
     def __del__(self):
         self.close()
 
+class WordSource(object):
+    ORIGIN = 0
+    NEW = 1
+    UNKNOWN = -1
+    VALID_SOURCE = {ORIGIN, NEW}
+    def __init__(self):
+        self._word_source = {}
+
+    def add_word_and_source(self, word, source):
+        '''
+        add word and source.
+        if word has already been set source, nonting to do
+        @return True when set, else False
+        '''
+        if source not in self.VALID_SOURCE:
+            raise Exception("unkown source.")
+        # if word has aleary been set source, don't change it!
+        if word in self._word_source:
+            return False
+        self._word_source[word] = source
+        return True
+    
+    def update_word_source(self, word, source):
+        '''
+        directly update the source
+        '''
+        self._word_source[word] = source
+    
+    def remove_word(self, word):
+        '''
+        delete the word.
+        @return True if deleted, else False
+        '''
+        if word in self._word_source:
+            del self._word_source[word]
+            return True
+        return False
+    
+    def get_word_source(self, word):
+        '''
+        get word source
+        '''
+        return self._word_source.get(word, self.UNKNOWN)
+
+
+# def get_original_len2wordset():
+#     len2wordset = getattr(_global_cached_data, "_origin_len2set", None)
+#     if len2wordset is None:
+#         len2wordset = _global_cached_data._origin_len2set = Len2WordSet()
+#         recorder = get_action_recorder()
+#         word_list = recorder.parse_action(WORD_LIST_PATH)
+#         len2wordset.parse_from_word_list(word_list)
+#     return len2wordset
+
+
+
+# def get_new_len2wordset():
+#     len2wordset = getattr(_global_cached_data, "_new_len2wordset", None)
+#     if len2wordset is None:
+#         len2wordset = _global_cached_data._new_len2wordset = Len2WordSet()
+#     return len2wordset
+
+# def add_new_word2len2wordset(word):
+#     new_len2wordset = get_new_len2wordset()
+#     word_len = len(word)
+#     new_len2wordset.setdefault(word_len, set()).add(word)
+
+def get_base_word_set():
+    '''
+    get base word set.
+    '''
+    base_word_set = getattr(_global_cached_data, "_base_word_set", None)
+    if base_word_set is None:
+        base_word_set = parse_base_word_set()
+        setattr(_global_cached_data, "_base_word_set", base_word_set)
+    return base_word_set
+
 def get_action_recorder():
     '''
-    get action recoder
+    get initialized action recoder.
     '''
     action_recorder = getattr(_global_cached_data, "_action_recorder", None)
     if action_recorder is None:
@@ -270,30 +344,55 @@ def close_action_recorder():
     if action_recorder:
         action_recorder.close()
 
-ORIGIN_LEN2WORD_SET_NAME = "ORIGIN"
-
-def get_original_len2wordset():
-    len2wordset = getattr(_global_cached_data, "_origin_len2set", None)
-    if len2wordset is None:
-        len2wordset = _global_cached_data._origin_len2set = Len2WordSet()
+def get_len2word_set():
+    '''
+    get len2word set
+    '''
+    len2word_set = getattr(_global_cached_data, "_len2word_set", None)
+    if len2word_set is None:
+        len2word_set = _global_cached_data._len2word_set = Len2WordSet()
         recorder = get_action_recorder()
-        word_list = recorder.parse_action(WORD_LIST_PATH)
-        len2wordset.parse_from_word_list(word_list)
-    return len2wordset
+        base_word_set = get_base_word_set()
+        all_word_list = recorder.parse_action(base_word_set) # to restore the previous tatus
+        len2word_set.parse_from_word_list(all_word_list)
+    return len2word_set
 
-NEW_LEN2WORD_SET_NAME = "NEW"
+def _get_current_word_source_obj():
+    word_source = getattr(_global_cached_data, "_word_source", None)
+    if word_source is None:
+        # init word source according to current word.
+        word_source = WordSource()
+        recorder = get_action_recorder()
+        base_word_set = get_base_word_set()
+        all_word_list = recorder.parse_action(base_word_set)
+        for word in all_word_list:
+            if word in base_word_set:
+                source = WordSource.ORIGIN
+            else:
+                source = WordSource.NEW
+            word_source.add_word_and_source(word, source)
+        # bind to global data.
+        setattr(_global_cached_data, "_word_source", word_source)
+    return word_source
 
-def get_new_len2wordset():
-    len2wordset = getattr(_global_cached_data, "_new_len2wordset", None)
-    if len2wordset is None:
-        len2wordset = _global_cached_data._new_len2wordset = Len2WordSet()
-    return len2wordset
+def get_word_source(word):
+    return _get_current_word_source_obj().get_word_source(word)
 
-def add_new_word2len2wordset(word):
-    new_len2wordset = get_new_len2wordset()
-    word_len = len(word)
-    new_len2wordset.setdefault(word_len, set()).add(word)
 
+def add_new_word_and_set_source(word):
+    '''
+    add new word to len2word_set and set it's source
+    '''
+    len2set = get_len2word_set()
+    len2set.add_word(word)
+    _get_current_word_source_obj().add_word_and_source(word, WordSource.NEW)
+
+def remove_word_and_source(word):
+    '''
+    remove word from len2word and word's source from wordsource
+    '''
+    get_len2word_set().remove_word(word)
+    _get_current_word_source_obj().remove_word(word)
 
 def get_match_word_range(text, len2set):
     '''
